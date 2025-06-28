@@ -1,0 +1,71 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pgdn-cve"
+version = "1.0.0"
+description = "PGDN CVE Library - Download and manage CVE data from NVD API"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "PGDN Network", email = "security@pgdn.network"}
+]
+keywords = ["security", "cve", "vulnerability", "nvd", "api"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: System :: Monitoring"
+]
+requires-python = ">=3.8"
+dependencies = [
+    "httpx>=0.24.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=22.0.0",
+    "isort>=5.10.0",
+    "flake8>=5.0.0",
+]
+
+[project.scripts]
+pgdn-cve = "pgdn_cve_cli:main"
+
+[project.urls]
+Homepage = "https://github.com/pgdn-network/pgdn-cve"
+Repository = "https://github.com/pgdn-network/pgdn-cve"
+Issues = "https://github.com/pgdn-network/pgdn-cve/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.black]
+line-length = 100
+target-version = ['py38']
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+line_length = 100
