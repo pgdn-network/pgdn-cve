@@ -9,10 +9,7 @@ import sys
 from pathlib import Path
 from typing import Dict, Any
 
-# Add src directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent / "src"))
-
-from pgdn_cve.cve_downloader import CVEDownloader
+from .cve_downloader import CVEDownloader
 
 
 def download_command(args) -> Dict[str, Any]:

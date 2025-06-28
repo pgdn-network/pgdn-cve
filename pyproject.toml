@@ -42,7 +42,7 @@ dev = [
 ]
 
 [project.scripts]
-pgdn-cve = "pgdn_cve_cli:main"
+pgdn-cve = "pgdn_cve.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/pgdn-network/pgdn-cve"
