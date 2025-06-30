@@ -6,7 +6,7 @@ import json
 import re
 import time
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Generator
 from pathlib import Path
 
 import httpx
@@ -263,6 +263,166 @@ class CVEDownloader:
                 "message": f"Failed to save CVEs: {str(e)}"
             }
 
+    def download_all_cves(self, start_date: Optional[str] = None, end_date: Optional[str] = None, 
+                          batch_size: int = 2000, delay_between_requests: float = 0.6) -> List[Dict[str, Any]]:
+        """
+        Download all CVEs using pagination.
+        
+        Args:
+            start_date: Start date in YYYY-MM-DD format (optional, defaults to beginning of time)
+            end_date: End date in YYYY-MM-DD format (optional, defaults to now)
+            batch_size: Number of CVEs per request (max 2000 for NVD API)
+            delay_between_requests: Delay between requests in seconds (to respect rate limits)
+            
+        Returns:
+            List of all CVE dictionaries
+        """
+        try:
+            # Set default dates if not provided
+            if not end_date:
+                end_date = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000")
+            if not start_date:
+                # Default to a reasonable start date (e.g., 1999 when CVEs started)
+                start_date = "1999-01-01T00:00:00.000"
+            
+            # Convert simple date format to full datetime if needed
+            if len(start_date) == 10:  # YYYY-MM-DD format
+                start_date = f"{start_date}T00:00:00.000"
+            if len(end_date) == 10:  # YYYY-MM-DD format
+                end_date = f"{end_date}T23:59:59.999"
+            
+            all_cves = []
+            start_index = 0
+            total_results = None
+            
+            print(f"Starting download of all CVEs from {start_date} to {end_date}")
+            print(f"Batch size: {batch_size}, Delay between requests: {delay_between_requests}s")
+            
+            while True:
+                params = {
+                    "startIndex": start_index,
+                    "resultsPerPage": min(batch_size, 2000),
+                    "pubStartDate": start_date,
+                    "pubEndDate": end_date
+                }
+                
+                print(f"Fetching batch starting at index {start_index}...")
+                
+                response = self.client.get(self.NVD_API_BASE, params=params)
+                response.raise_for_status()
+                
+                data = response.json()
+                vulnerabilities = data.get("vulnerabilities", [])
+                
+                # Get total results on first request
+                if total_results is None:
+                    total_results = data.get("totalResults", 0)
+                    print(f"Total CVEs available: {total_results}")
+                
+                if not vulnerabilities:
+                    print("No more CVEs to fetch")
+                    break
+                
+                # Parse CVEs in this batch
+                batch_cves = []
+                for vulnerability in vulnerabilities:
+                    cve_data = self._parse_cve_data(vulnerability)
+                    if cve_data:
+                        batch_cves.append(cve_data)
+                
+                all_cves.extend(batch_cves)
+                print(f"Fetched {len(batch_cves)} CVEs (total: {len(all_cves)}/{total_results})")
+                
+                # Check if we've got all results
+                if len(vulnerabilities) < batch_size or len(all_cves) >= total_results:
+                    print("Reached end of available CVEs")
+                    break
+                
+                # Update start index for next batch
+                start_index += len(vulnerabilities)
+                
+                # Respect rate limits
+                if delay_between_requests > 0:
+                    time.sleep(delay_between_requests)
+            
+            print(f"Download completed. Total CVEs downloaded: {len(all_cves)}")
+            return all_cves
+            
+        except Exception as e:
+            return [{"error": f"Failed to download all CVEs: {str(e)}"}]
+
+    def download_all_cves_by_year(self, year: int, batch_size: int = 2000, 
+                                 delay_between_requests: float = 0.6) -> List[Dict[str, Any]]:
+        """
+        Download all CVEs for a specific year.
+        
+        Args:
+            year: Year to download CVEs for
+            batch_size: Number of CVEs per request (max 2000 for NVD API)
+            delay_between_requests: Delay between requests in seconds
+            
+        Returns:
+            List of CVE dictionaries for the specified year
+        """
+        start_date = f"{year}-01-01"
+        end_date = f"{year}-12-31"
+        
+        return self.download_all_cves(start_date, end_date, batch_size, delay_between_requests)
+
+    def iter_cves(self, start_date: Optional[str] = None, end_date: Optional[str] = None,
+                 batch_size: int = 1000, delay_between_requests: float = 0.6) -> 'Generator[List[Dict[str, Any]], None, None]':
+        """
+        Efficiently iterate over all CVEs in batches, yielding each batch as a list.
+        Args:
+            start_date: Start date in YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS format (optional)
+            end_date: End date in YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS format (optional)
+            batch_size: Number of CVEs per request (max 2000 for NVD API)
+            delay_between_requests: Delay between requests in seconds (to respect rate limits)
+        Yields:
+            List of CVE dictionaries for each batch
+        """
+        # Set default dates if not provided
+        if not end_date:
+            end_date = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000")
+        if not start_date:
+            start_date = "1999-01-01T00:00:00.000"
+        # Convert simple date format to full datetime if needed
+        if len(start_date) == 10:
+            start_date = f"{start_date}T00:00:00.000"
+        if len(end_date) == 10:
+            end_date = f"{end_date}T23:59:59.999"
+        # Add UTC offset as required by NVD API
+        start_date += " UTC+00:00"
+        end_date += " UTC+00:00"
+        start_index = 0
+        total_results = None
+        while True:
+            params = {
+                "startIndex": start_index,
+                "resultsPerPage": min(batch_size, 2000),
+                "pubStartDate": start_date,
+                "pubEndDate": end_date
+            }
+            response = self.client.get(self.NVD_API_BASE, params=params)
+            response.raise_for_status()
+            data = response.json()
+            vulnerabilities = data.get("vulnerabilities", [])
+            if total_results is None:
+                total_results = data.get("totalResults", 0)
+            if not vulnerabilities:
+                break
+            batch_cves = []
+            for vulnerability in vulnerabilities:
+                cve_data = self._parse_cve_data(vulnerability)
+                if cve_data:
+                    batch_cves.append(cve_data)
+            yield batch_cves
+            if len(vulnerabilities) < batch_size or (start_index + len(vulnerabilities)) >= total_results:
+                break
+            start_index += len(vulnerabilities)
+            if delay_between_requests > 0:
+                time.sleep(delay_between_requests)
+
 
 def download_cves(days_back: int = 7, max_results: int = 1000) -> List[Dict[str, Any]]:
     """
@@ -292,3 +452,53 @@ def search_cves(keyword: str, max_results: int = 100) -> List[Dict[str, Any]]:
     """
     with CVEDownloader() as downloader:
         return downloader.search_cves_by_keyword(keyword, max_results)
+
+
+def download_all_cves(start_date: Optional[str] = None, end_date: Optional[str] = None,
+                     batch_size: int = 2000, delay_between_requests: float = 0.6) -> List[Dict[str, Any]]:
+    """
+    Convenience function to download all CVEs using pagination.
+    
+    Args:
+        start_date: Start date in YYYY-MM-DD format (optional)
+        end_date: End date in YYYY-MM-DD format (optional)
+        batch_size: Number of CVEs per request (max 2000)
+        delay_between_requests: Delay between requests in seconds
+        
+    Returns:
+        List of all CVE dictionaries
+    """
+    with CVEDownloader() as downloader:
+        return downloader.download_all_cves(start_date, end_date, batch_size, delay_between_requests)
+
+
+def download_all_cves_by_year(year: int, batch_size: int = 2000, 
+                             delay_between_requests: float = 0.6) -> List[Dict[str, Any]]:
+    """
+    Convenience function to download all CVEs for a specific year.
+    
+    Args:
+        year: Year to download CVEs for
+        batch_size: Number of CVEs per request (max 2000)
+        delay_between_requests: Delay between requests in seconds
+        
+    Returns:
+        List of CVE dictionaries for the specified year
+    """
+    with CVEDownloader() as downloader:
+        return downloader.download_all_cves_by_year(year, batch_size, delay_between_requests)
+
+def iter_cves(start_date: Optional[str] = None, end_date: Optional[str] = None,
+             batch_size: int = 1000, delay_between_requests: float = 0.6) -> 'Generator[List[Dict[str, Any]], None, None]':
+    """
+    Top-level convenience function to iterate over all CVEs in batches.
+    Args:
+        start_date: Start date in YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS format (optional)
+        end_date: End date in YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS format (optional)
+        batch_size: Number of CVEs per request (max 2000 for NVD API)
+        delay_between_requests: Delay between requests in seconds
+    Yields:
+        List of CVE dictionaries for each batch
+    """
+    with CVEDownloader() as downloader:
+        yield from downloader.iter_cves(start_date, end_date, batch_size, delay_between_requests)

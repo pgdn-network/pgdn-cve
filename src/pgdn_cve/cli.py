@@ -26,6 +26,58 @@ def download_command(args) -> Dict[str, Any]:
                     "total_cves": 1,
                     "cves": [result]
                 }
+            elif args.all:
+                # Download all CVEs
+                cves = downloader.download_all_cves(
+                    start_date=args.start_date,
+                    end_date=args.end_date,
+                    batch_size=args.batch_size,
+                    delay_between_requests=args.delay
+                )
+                
+                if isinstance(cves, list) and cves and "error" in cves[0]:
+                    return cves[0]
+                
+                result = {
+                    "status": "success",
+                    "total_cves": len(cves),
+                    "download_type": "all_cves",
+                    "start_date": args.start_date or "1999-01-01",
+                    "end_date": args.end_date or "now",
+                    "cves": cves
+                }
+                
+                # Save to file if requested
+                if args.output:
+                    save_result = downloader.save_cves_to_file(cves, args.output)
+                    result["file_saved"] = save_result
+                
+                return result
+            elif args.year:
+                # Download all CVEs for a specific year
+                cves = downloader.download_all_cves_by_year(
+                    year=args.year,
+                    batch_size=args.batch_size,
+                    delay_between_requests=args.delay
+                )
+                
+                if isinstance(cves, list) and cves and "error" in cves[0]:
+                    return cves[0]
+                
+                result = {
+                    "status": "success",
+                    "total_cves": len(cves),
+                    "download_type": "year_cves",
+                    "year": args.year,
+                    "cves": cves
+                }
+                
+                # Save to file if requested
+                if args.output:
+                    save_result = downloader.save_cves_to_file(cves, args.output)
+                    result["file_saved"] = save_result
+                
+                return result
             else:
                 # Download recent CVEs
                 cves = downloader.download_recent_cves(
@@ -109,6 +161,15 @@ Examples:
   # Download specific CVE
   pgdn-cve download --cve-id CVE-2021-44228
   
+  # Download all CVEs (use with caution - this will take a long time)
+  pgdn-cve download --all --output all_cves.json
+  
+  # Download all CVEs for a specific year
+  pgdn-cve download --year 2023 --output cves_2023.json
+  
+  # Download all CVEs with custom date range
+  pgdn-cve download --all --start-date 2023-01-01 --end-date 2023-12-31 --output cves_2023.json
+  
   # Search CVEs by keyword
   pgdn-cve search --keyword "log4j"
   
@@ -127,6 +188,12 @@ Examples:
     download_parser.add_argument('--limit', type=int, default=1000, help='Maximum number of CVEs to fetch')
     download_parser.add_argument('--cve-id', help='Download specific CVE by ID (e.g., CVE-2021-44228)')
     download_parser.add_argument('--output', help='Save results to JSON file')
+    download_parser.add_argument('--all', action='store_true', help='Download all CVEs (use with caution)')
+    download_parser.add_argument('--start-date', help='Start date for downloading all CVEs (YYYY-MM-DD)')
+    download_parser.add_argument('--end-date', help='End date for downloading all CVEs (YYYY-MM-DD)')
+    download_parser.add_argument('--batch-size', type=int, default=2000, help='Batch size for downloading all CVEs (max 2000)')
+    download_parser.add_argument('--delay', type=float, default=0.6, help='Delay between requests in seconds (for rate limiting)')
+    download_parser.add_argument('--year', type=int, help='Download all CVEs for a specific year')
     
     # Search command
     search_parser = subparsers.add_parser('search', help='Search CVEs by keyword')

@@ -7,7 +7,7 @@ name = "pgdn-cve"
 version = "1.0.0"
 description = "PGDN CVE Library - Download and manage CVE data from NVD API"
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
 authors = [
     {name = "PGDN Network", email = "security@pgdn.network"}
 ]
@@ -16,7 +16,6 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: System Administrators",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.8",
