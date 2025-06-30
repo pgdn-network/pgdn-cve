@@ -572,3 +572,26 @@ If you have network connectivity issues:
 - **Issues**: [GitHub Issues](https://github.com/pgdn-network/pgdn-cve/issues)
 - **Documentation**: This README
 - **Security**: For security issues, email security@pgdn.network
+
+## Usage Example: Fetching CVEs by Date Range (NVD API Style)
+
+You can fetch CVEs in a date range using the same style as the NVD API docs:
+
+```python
+from pgdn_cve import iter_cves
+from pprint import pprint
+
+# Always provide both start_date and end_date in YYYY-MM-DDTHH:MM:SS.000Z format
+start_date = "2021-08-04T00:00:00.000Z"
+end_date = "2021-10-23T00:00:00.000Z"
+
+for batch in iter_cves(start_date=start_date, end_date=end_date, batch_size=1):
+    if not batch:
+        print("No CVEs found in this range.")
+    else:
+        pprint(batch)
+```
+
+- If there are no CVEs in the range, the iterator yields an empty list (404 from NVD API is handled as 'no results').
+- Dates must be in the format `YYYY-MM-DDTHH:MM:SS.000Z` (or will be auto-formatted).
+- Both `start_date` and `end_date` are required for date-based queries.
