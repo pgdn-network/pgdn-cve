@@ -114,6 +114,7 @@ If you want to fetch only new CVEs since your last pull, use the `iter_cves` fun
 from pgdn_cve import iter_cves
 
 # Load this from your database or a state file
+# You can use "YYYY-MM-DD", "YYYY-MM-DDTHH:MM:SS", or "YYYY-MM-DDTHH:MM:SS.000Z" format.
 last_pull = load_last_pull_timestamp()  # e.g., "2024-06-28T00:00:00"
 
 for batch in iter_cves(start_date=last_pull, batch_size=1000):
@@ -127,9 +128,10 @@ for batch in iter_cves(start_date=last_pull, batch_size=1000):
     save_last_pull_timestamp(last_pull)
 ```
 
-- This approach avoids re-downloading old data and is robust for incremental updates.
-- You control the batch size and the date window.
-- The library handles pagination and rate limiting for you.
+**Date Format Notes:**
+- You may pass `start_date` and `end_date` as `YYYY-MM-DD`, `YYYY-MM-DDTHH:MM:SS`, or `YYYY-MM-DDTHH:MM:SS.000Z`.
+- The library will automatically convert your date to the correct NVD API format (`YYYY-MM-DDTHH:MM:SS.000Z`).
+- If you pass an `end_date` in the future, it will be capped at the current UTC time to avoid NVD API errors.
 
 ### Advanced Usage with CVEDownloader Class
 
