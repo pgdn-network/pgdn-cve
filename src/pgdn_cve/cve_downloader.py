@@ -369,8 +369,8 @@ class CVEDownloader:
         """
         Efficiently iterate over all CVEs in batches, yielding each batch as a list.
         Args:
-            start_date: Start date in YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS format (required)
-            end_date: End date in YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS format (required)
+            start_date: Start date in YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS, or datetime object (required)
+            end_date: End date in YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS, or datetime object (required)
             batch_size: Number of CVEs per request (max 2000 for NVD API)
             delay_between_requests: Delay between requests in seconds (to respect rate limits)
         Yields:
@@ -378,6 +378,13 @@ class CVEDownloader:
         """
         from datetime import datetime, timezone
         import httpx
+        
+        # Convert datetime objects to strings if needed
+        if isinstance(start_date, datetime):
+            start_date = start_date.strftime("%Y-%m-%dT%H:%M:%S.000")
+        if isinstance(end_date, datetime):
+            end_date = end_date.strftime("%Y-%m-%dT%H:%M:%S.000")
+        
         # Set default dates if not provided
         if not start_date:
             start_date = "1999-01-01T00:00:00.000"
@@ -385,18 +392,22 @@ class CVEDownloader:
             # Default to end of last full day (UTC)
             now = datetime.now(timezone.utc)
             end_date = now.strftime("%Y-%m-%dT23:59:59.999")
+        
         # Convert simple date format to full datetime if needed
-        if len(start_date) == 10:  # YYYY-MM-DD format
+        if isinstance(start_date, str) and len(start_date) == 10:  # YYYY-MM-DD format
             start_date = f"{start_date}T00:00:00.000"
-        if len(end_date) == 10:  # YYYY-MM-DD format
+        if isinstance(end_date, str) and len(end_date) == 10:  # YYYY-MM-DD format
             end_date = f"{end_date}T23:59:59.999"
+        
         # Ensure proper UTC format for NVD API (YYYY-MM-DDTHH:MM:SS.000Z)
-        if not start_date.endswith('Z'):
+        if isinstance(start_date, str) and not start_date.endswith('Z'):
             start_date = start_date + 'Z'
-        if not end_date.endswith('Z'):
+        if isinstance(end_date, str) and not end_date.endswith('Z'):
             end_date = end_date + 'Z'
+        
         start_index = 0
         total_results = None
+        
         while True:
             params = {
                 "startIndex": start_index,
@@ -404,6 +415,7 @@ class CVEDownloader:
                 "pubStartDate": start_date,
                 "pubEndDate": end_date
             }
+            
             try:
                 response = self.client.get(self.NVD_API_BASE, params=params)
                 response.raise_for_status()
@@ -413,21 +425,29 @@ class CVEDownloader:
                     yield []
                     break
                 raise
+            
             data = response.json()
             vulnerabilities = data.get("vulnerabilities", [])
+            
             if total_results is None:
                 total_results = data.get("totalResults", 0)
+            
             if not vulnerabilities:
                 break
+            
             batch_cves = []
             for vulnerability in vulnerabilities:
                 cve_data = self._parse_cve_data(vulnerability)
                 if cve_data:
                     batch_cves.append(cve_data)
+            
             yield batch_cves
+            
             if len(vulnerabilities) < batch_size or (start_index + len(vulnerabilities)) >= total_results:
                 break
+            
             start_index += len(vulnerabilities)
+            
             if delay_between_requests > 0:
                 time.sleep(delay_between_requests)
 
