@@ -5,7 +5,7 @@ CVE Downloader - Simple CVE data fetching and management from NVD API.
 import json
 import re
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any, Generator
 from pathlib import Path
 
@@ -279,25 +279,32 @@ class CVEDownloader:
         """
         try:
             # Set default dates if not provided
+            now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000")
             if not end_date:
-                end_date = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000")
+                end_date = now_utc
             if not start_date:
                 # Default to a reasonable start date (e.g., 1999 when CVEs started)
                 start_date = "1999-01-01T00:00:00.000"
-            
             # Convert simple date format to full datetime if needed
             if len(start_date) == 10:  # YYYY-MM-DD format
                 start_date = f"{start_date}T00:00:00.000"
             if len(end_date) == 10:  # YYYY-MM-DD format
                 end_date = f"{end_date}T23:59:59.999"
-            
+            # Cap end_date at now
+            end_date_dt = datetime.strptime(end_date[:23], "%Y-%m-%dT%H:%M:%S.%f")
+            now_dt = datetime.strptime(now_utc, "%Y-%m-%dT%H:%M:%S.000")
+            if end_date_dt > now_dt:
+                end_date = now_utc
+            # Ensure proper UTC format for NVD API (YYYY-MM-DDTHH:MM:SS.000Z)
+            if not start_date.endswith('Z'):
+                start_date = start_date.replace('+00:00', '').replace(' UTC+00:00', '') + 'Z'
+            if not end_date.endswith('Z'):
+                end_date = end_date.replace('+00:00', '').replace(' UTC+00:00', '') + 'Z'
             all_cves = []
             start_index = 0
             total_results = None
-            
             print(f"Starting download of all CVEs from {start_date} to {end_date}")
             print(f"Batch size: {batch_size}, Delay between requests: {delay_between_requests}s")
-            
             while True:
                 params = {
                     "startIndex": start_index,
@@ -305,49 +312,37 @@ class CVEDownloader:
                     "pubStartDate": start_date,
                     "pubEndDate": end_date
                 }
-                
                 print(f"Fetching batch starting at index {start_index}...")
-                
                 response = self.client.get(self.NVD_API_BASE, params=params)
                 response.raise_for_status()
-                
                 data = response.json()
                 vulnerabilities = data.get("vulnerabilities", [])
-                
                 # Get total results on first request
                 if total_results is None:
                     total_results = data.get("totalResults", 0)
                     print(f"Total CVEs available: {total_results}")
-                
                 if not vulnerabilities:
                     print("No more CVEs to fetch")
                     break
-                
                 # Parse CVEs in this batch
                 batch_cves = []
                 for vulnerability in vulnerabilities:
                     cve_data = self._parse_cve_data(vulnerability)
                     if cve_data:
                         batch_cves.append(cve_data)
-                
                 all_cves.extend(batch_cves)
                 print(f"Fetched {len(batch_cves)} CVEs (total: {len(all_cves)}/{total_results})")
-                
                 # Check if we've got all results
                 if len(vulnerabilities) < batch_size or len(all_cves) >= total_results:
                     print("Reached end of available CVEs")
                     break
-                
                 # Update start index for next batch
                 start_index += len(vulnerabilities)
-                
                 # Respect rate limits
                 if delay_between_requests > 0:
                     time.sleep(delay_between_requests)
-            
             print(f"Download completed. Total CVEs downloaded: {len(all_cves)}")
             return all_cves
-            
         except Exception as e:
             return [{"error": f"Failed to download all CVEs: {str(e)}"}]
 
@@ -381,19 +376,28 @@ class CVEDownloader:
         Yields:
             List of CVE dictionaries for each batch
         """
+        from datetime import datetime, timezone
         # Set default dates if not provided
+        now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000")
         if not end_date:
-            end_date = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000")
+            end_date = now_utc
         if not start_date:
             start_date = "1999-01-01T00:00:00.000"
         # Convert simple date format to full datetime if needed
-        if len(start_date) == 10:
+        if len(start_date) == 10:  # YYYY-MM-DD format
             start_date = f"{start_date}T00:00:00.000"
-        if len(end_date) == 10:
+        if len(end_date) == 10:  # YYYY-MM-DD format
             end_date = f"{end_date}T23:59:59.999"
-        # Add UTC offset as required by NVD API
-        start_date += " UTC+00:00"
-        end_date += " UTC+00:00"
+        # Cap end_date at now
+        end_date_dt = datetime.strptime(end_date[:23], "%Y-%m-%dT%H:%M:%S.%f")
+        now_dt = datetime.strptime(now_utc, "%Y-%m-%dT%H:%M:%S.000")
+        if end_date_dt > now_dt:
+            end_date = now_utc
+        # Ensure proper UTC format for NVD API (YYYY-MM-DDTHH:MM:SS.000Z)
+        if not start_date.endswith('Z'):
+            start_date = start_date.replace('+00:00', '').replace(' UTC+00:00', '') + 'Z'
+        if not end_date.endswith('Z'):
+            end_date = end_date.replace('+00:00', '').replace(' UTC+00:00', '') + 'Z'
         start_index = 0
         total_results = None
         while True:
